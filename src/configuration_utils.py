@@ -29,7 +29,7 @@ class PartitionAxis(NamedTuple):
     generation_attention_dim_axis: AxisType = None
 
 
-class NNXPreTrainedConfig(transformers.PretrainedConfig):
+class NNXPretrainedConfig(transformers.PretrainedConfig):
 
     def __init__(
         self,

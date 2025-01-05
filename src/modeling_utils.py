@@ -1,7 +1,7 @@
 import os
 import typing as tp
 from flax import nnx
-from src.configuration_utils import NNXPreTrainedConfig
+from src.configuration_utils import NNXPretrainedConfig
 from transformers import PretrainedConfig
 from transformers.utils import (
     SAFE_WEIGHTS_INDEX_NAME,
@@ -9,6 +9,8 @@ from transformers.utils import (
     cached_file,
     logging,
 )
+import jax.numpy as jnp
+from jax import lax
 
 
 ORBAX_WEIGHTS_NAME = "nnx_model.msgpack"
@@ -26,11 +28,18 @@ class NNXPretrainedModel(nnx.Module):
     _missing_keys = set()
 
     def __init__(
-        self, config: NNXPreTrainedConfig | None, do_partition: bool = False, **kwargs
+        self,
+        config: NNXPretrainedConfig | None,
+        dtype: jnp.dtype = jnp.float32, 
+        param_dtype: jnp.dtype = jnp.float32,
+        precision: tp.Optional[lax.Precision] = None,
+        *,
+        rngs: nnx.Rngs,
     ):
-        if not isinstance(config, NNXPreTrainedConfig):
+        if not isinstance(config, NNXPretrainedConfig):
             raise TypeError("config must be an instance of NNXPreTrainedConfig")
 
+        nnx.get_named_sharding
         self.config = config
         self.name_or_path = config.name_or_path
         _ = self.mesh
@@ -60,4 +69,7 @@ class NNXPretrainedModel(nnx.Module):
         return self._model_type
 
     def shard_model(self):
+        @nnx.jit
+        def create_sharded_model():
+        
         pass

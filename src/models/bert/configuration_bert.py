@@ -1,8 +1,8 @@
 
-from configuration_utils import NNXPreTrainedConfig
+from src.configuration_utils import NNXPretrainedConfig
 
 
-class BertConfig(NNXPreTrainedConfig):
+class BertConfig(NNXPretrainedConfig):
     model_type = "bert"
 
     def __init__(

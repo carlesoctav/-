@@ -1,12 +1,14 @@
 from flax import nnx
 
-nnx.dot_product_attention
 import jax
 import jax.numpy as jnp
 import typing as tp
 from jax import lax
+import transformers
 
 from src.models.bert.configuration_bert import BertConfig
+from src.modeling_utils import NNXPretrainedModel
+from src.mixins import HuggingFaceCompatible
 
 
 class BertEmbeddings(nnx.Module):
@@ -129,6 +131,14 @@ class BertSelfAttention(nnx.Module):
         tensor = tensor.reshape(new_shape)
         return tensor
 
+    def _merge_head(
+        self,
+        tensor: jax.Array,
+    ):
+        new_shape = tensor.shape[:2] + (self.all_head_size,)
+        tensor = tensor.reshape(new_shape)
+        return tensor
+
     def __call__(
         self,
         hidden_states: jax.Array,
@@ -148,36 +158,9 @@ class BertSelfAttention(nnx.Module):
             mask=attention_mask,
         )
 
+        attention_output = self._merge_head(attention_output)
+
         return attention_output
-
-
-
-class BertIntermediate(nnx.Module):
-    def __init__(
-        self,
-        config: BertConfig,
-        dtype: jnp.dtype = jnp.float32,  # the dtype of the computation
-        param_dtype: jnp.dtype = jnp.float32,
-        precision: tp.Optional[lax.Precision] = None,
-        *,
-        rngs: nnx.Rngs,
-    ):
-        self.dense = nnx.Linear(
-            config.hidden_size,
-            config.intermediate_size,
-            dtype=dtype,
-            param_dtype=param_dtype,
-            rngs=rngs,
-        )
-        self.intermediate_act_fn = nnx.gelu
-
-    def __call__(
-        self,
-        hidden_states: jax.Array,
-    ) -> jax.Array:
-        hidden_states = self.dense(hidden_states)
-        hidden_states = self.intermediate_act_fn(hidden_states)
-        return hidden_states
 
 
 class BertSelfOutput(nnx.Module):
@@ -208,14 +191,103 @@ class BertSelfOutput(nnx.Module):
 
     def __call__(
         self,
-        hidden_states: jax.Array, 
-        input_tensor: jax.Array, 
-    ) -> jax.Array: 
+        hidden_states: jax.Array,
+        input_tensor: jax.Array,
+    ) -> jax.Array:
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
         return hidden_states
 
+
+class BertAttention(nnx.Module):
+    def __init__(
+        self,
+        config: BertConfig,
+        dtype: jnp.dtype = jnp.float32,  # the dtype of the computation
+        param_dtype: jnp.dtype = jnp.float32,
+        precision: tp.Optional[lax.Precision] = None,
+        *,
+        rngs: nnx.Rngs,
+    ):
+        self.self = BertSelfAttention(
+            config, dtype, param_dtype, precision, rngs=rngs
+        )
+        self.output = BertSelfOutput(config, dtype, param_dtype, precision, rngs=rngs)
+
+    def __call__(
+        self,
+        hidden_states: jax.Array,
+        attention_mask: jax.Array | None = None,
+    ) -> jax.Array:
+        attention_output = self.self(hidden_states, attention_mask)
+        layer_output = self.output(attention_output, hidden_states)
+        return layer_output
+
+
+class BertIntermediate(nnx.Module):
+    def __init__(
+        self,
+        config: BertConfig,
+        dtype: jnp.dtype = jnp.float32,  # the dtype of the computation
+        param_dtype: jnp.dtype = jnp.float32,
+        precision: tp.Optional[lax.Precision] = None,
+        *,
+        rngs: nnx.Rngs,
+    ):
+        self.dense = nnx.Linear(
+            config.hidden_size,
+            config.intermediate_size,
+            dtype=dtype,
+            param_dtype=param_dtype,
+            rngs=rngs,
+        )
+        self.intermediate_act_fn = nnx.gelu
+
+    def __call__(
+        self,
+        hidden_states: jax.Array,
+    ) -> jax.Array:
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.intermediate_act_fn(hidden_states)
+        return hidden_states
+
+
+class BertOutput(nnx.Module):
+    def __init__(
+        self,
+        config,
+        dtype: jnp.dtype = jnp.float32,  # the dtype of the computation
+        param_dtype: jnp.dtype = jnp.float32,
+        precision: tp.Optional[lax.Precision] = None,
+        *,
+        rngs: nnx.Rngs,
+    ):
+        self.dense = nnx.Linear(
+            config.intermediate_size,
+            config.hidden_size,
+            dtype=dtype,
+            param_dtype=param_dtype,
+            rngs=rngs,
+        )
+        self.LayerNorm = nnx.LayerNorm(
+            config.hidden_size,
+            epsilon=config.layer_norm_eps,
+            dtype=dtype,
+            param_dtype=param_dtype,
+            rngs=rngs,
+        )
+        self.dropout = nnx.Dropout(config.hidden_dropout_prob, rngs=rngs)
+
+    def __call__(
+        self,
+        hidden_states: jax.Array,
+        input_tensor: jax.Array,
+    ) -> jax.Array:
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.LayerNorm(hidden_states + input_tensor)
+        return hidden_states
 
 
 class BertLayer(nnx.Module):
@@ -228,18 +300,20 @@ class BertLayer(nnx.Module):
         *,
         rngs: nnx.Rngs,
     ):
-        self.attention = BertSelfAttention(config, dtype, param_dtype, precision, rngs=rngs)
-        self.intermediate = BertIntermediate(config, dtype, param_dtype, precision, rngs=rngs)
-        self.output = BertSelfOutput(config, dtype, param_dtype, precision, rngs=rngs)
+        self.attention = BertAttention(config, dtype, param_dtype, precision, rngs=rngs)
+        self.intermediate = BertIntermediate(
+            config, dtype, param_dtype, precision, rngs=rngs
+        )
+        self.output = BertOutput(config, dtype, param_dtype, precision, rngs=rngs)
 
     def __call__(
         self,
-        hidden_states: jax.Array, 
-        attention_mask: jax.Array | None = None, 
+        hidden_states: jax.Array,
+        attention_mask: jax.Array | None = None,
     ) -> jax.Array:
         attention_output = self.attention(hidden_states, attention_mask)
         intermediate_output = self.intermediate(attention_output)
-        layer_output = self.output(intermediate_output, hidden_states)
+        layer_output = self.output(intermediate_output, attention_output)
         return layer_output
 
 
@@ -253,15 +327,107 @@ class BertEncoder(nnx.Module):
         *,
         rngs: nnx.Rngs,
     ):
-        self.layers = [BertLayer(config, dtype, param_dtype, precision, rngs=rngs) for _ in range(config.num_hidden_layers)]
+        self.layer = [
+            BertLayer(config, dtype, param_dtype, precision, rngs=rngs)
+            for _ in range(config.num_hidden_layers)
+        ]
 
-    def forward(
+    def __call__(
         self,
-        hidden_states: jax.Array, 
-        attention_mask: jax.Array | None = None, 
+        hidden_states: jax.Array,
+        attention_mask: jax.Array | None = None,
     ) -> jax.Array:
-        for layer in self.layers:
+        for layer in self.layer:
             hidden_states = layer(hidden_states, attention_mask)
 
         return hidden_states
 
+
+class BertPooler(nnx.Module):
+    def __init__(
+        self,
+        config: BertConfig,
+        dtype: jnp.dtype = jnp.float32,
+        param_dtype: jnp.dtype = jnp.float32,
+        precision: tp.Optional[lax.Precision] = None,
+        *,
+        rngs: nnx.Rngs,
+    ):
+        self.config = config
+        self.dtype = dtype
+        self.param_dtype = param_dtype
+        self.precision = precision
+        self.dense = nnx.Linear(
+            self.config.hidden_size,
+            self.config.hidden_size,
+            kernel_init=jax.nn.initializers.normal(self.config.initializer_range),
+            dtype=dtype,
+            param_dtype=param_dtype,
+            precision=precision,
+            rngs=rngs,
+        )
+
+    def __call__(self, hidden_states):
+        cls_hidden_state = hidden_states[:, 0]
+        cls_hidden_state = self.dense(cls_hidden_state)
+        return nnx.tanh(cls_hidden_state)
+
+
+class BertPretrainedModel(NNXPretrainedModel, HuggingFaceCompatible):
+    hf_config_class = BertConfig 
+    hf_model_class = transformers.BertModel
+    embedding_layer_names = [
+        "word_embeddings",
+        "position_embeddings",
+        "token_type_embeddings",
+    ]
+    layernorm_names = ["layer_norm", "LayerNorm"]
+
+
+class BertModel(BertPretrainedModel):
+
+    def __init__(
+        self,
+        config: BertConfig,
+        dtype: jnp.dtype = jnp.float32,  # the dtype of the computation
+        param_dtype: jnp.dtype = jnp.float32,
+        precision: tp.Optional[lax.Precision] = None,
+        *,
+        rngs: nnx.Rngs,
+    ):
+        super().__init__(config, dtype, param_dtype, precision, rngs=rngs)
+        self.embeddings = BertEmbeddings(
+            config, dtype, param_dtype, precision, rngs=rngs
+        )
+        self.encoder = BertEncoder(config, dtype, param_dtype, precision, rngs=rngs)
+        self.pooler = BertPooler(config, dtype, param_dtype, precision, rngs=rngs)
+
+    def __call__(
+        self,
+        input_ids: jax.Array,
+        attention_mask: jax.Array | None = None,
+        token_type_ids: jax.Array | None = None,
+        position_ids: jax.Array | None = None,
+    ) -> jax.Array:
+
+        if attention_mask is None:
+            attention_mask = jnp.ones_like(input_ids)
+
+        if token_type_ids is None:
+            token_type_ids = jnp.zeros_like(input_ids)
+
+        if position_ids is None:
+            position_ids = jnp.broadcast_to(
+                jnp.arange(jnp.atleast_2d(input_ids).shape[-1]), jnp.shape(input_ids)
+            )
+
+        embeddings = self.embeddings(
+            input_ids=input_ids,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+        )
+        hidden_states = self.encoder(
+            embeddings,
+            attention_mask,
+        )
+        return hidden_states
