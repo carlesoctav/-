@@ -1,5 +1,6 @@
 
 from src.configuration_utils import NNXPretrainedConfig
+from jax.sharding import PartitionSpec, NamedSharding
 
 
 class BertConfig(NNXPretrainedConfig):
@@ -42,4 +43,67 @@ class BertConfig(NNXPretrainedConfig):
         self.position_embedding_type = position_embedding_type
         self.use_cache = use_cache
         self.classifier_dropout = classifier_dropout
+
+    def get_partition_rules(self, fully_sharded_data_parallel: bool = True):
+        """
+        Get the partition rules for the model.
+
+        Args:
+            fully_sharded_data_parallel (`bool`, *optional*, defaults to `True`):
+                Whether to use fully sharded data parallelism.
+
+        Returns:
+            `tp.Tuple[tp.Tuple[str, PartitionSpec]]`: The partition rules.
+        """
+        return (
+            (
+                (
+                    "embeddings/(position_embeddings|token_type_embeddings)/embedding",
+                    PartitionSpec(),
+                ),
+                ("embeddings/word_embeddings/embedding", PartitionSpec()),
+                (
+                    "attention/self/(key|query|value)/kernel",
+                    PartitionSpec("fsdp", "tp"),
+                ),
+                ("attention/self/(key|query|value)/bias", PartitionSpec()),
+                ("attention/output/dense/kernel", PartitionSpec("tp", "fsdp")),
+                ("attention/output/dense/bias", PartitionSpec()),
+                ("(LayerNorm|layer_norm)/(bias|scale)", PartitionSpec()),
+                ("intermediate/dense/kernel", PartitionSpec("fsdp", "tp")),
+                ("intermediate/dense/bias", PartitionSpec("tp")),
+                ("output/dense/kernel", PartitionSpec("tp", "fsdp")),
+                ("output/dense/bias", PartitionSpec()),
+                ("lm_head/dense/kernel", PartitionSpec()),
+                ("lm_head/dense/bias", PartitionSpec()),
+                ("lm_head/decoder/kernel", PartitionSpec("fsdp", "tp")),
+                ("lm_head/decoder/bias", PartitionSpec("tp")),
+                (".*", PartitionSpec()),
+            )
+            if not fully_sharded_data_parallel
+            else (
+                (
+                    "embeddings/(position_embeddings|token_type_embeddings)/embedding",
+                    PartitionSpec(),
+                ),
+                ("embeddings/word_embeddings/embedding", PartitionSpec()),
+                (
+                    "attention/self/(key|query|value)/kernel",
+                    PartitionSpec(("fsdp", "sp")),
+                ),
+                ("attention/self/(key|query|value)/bias", PartitionSpec()),
+                ("attention/output/dense/kernel", PartitionSpec(("fsdp", "sp"))),
+                ("attention/output/dense/bias", PartitionSpec()),
+                ("(LayerNorm|layer_norm)/(bias|scale)", PartitionSpec()),
+                ("intermediate/dense/kernel", PartitionSpec(("fsdp", "sp"))),
+                ("intermediate/dense/bias", PartitionSpec("sp")),
+                ("output/dense/kernel", PartitionSpec(("fsdp", "sp"))),
+                ("output/dense/bias", PartitionSpec()),
+                ("lm_head/dense/kernel", PartitionSpec()),
+                ("lm_head/dense/bias", PartitionSpec()),
+                ("lm_head/decoder/kernel", PartitionSpec(("fsdp", "sp"))),
+                ("lm_head/decoder/bias", PartitionSpec("sp")),
+                (".*", PartitionSpec()),
+            )
+        )
 

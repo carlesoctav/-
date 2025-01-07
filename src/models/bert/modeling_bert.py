@@ -376,12 +376,6 @@ class BertPooler(nnx.Module):
 class BertPretrainedModel(NNXPretrainedModel, HuggingFaceCompatible):
     hf_config_class = BertConfig 
     hf_model_class = transformers.BertModel
-    embedding_layer_names = [
-        "word_embeddings",
-        "position_embeddings",
-        "token_type_embeddings",
-    ]
-    layernorm_names = ["layer_norm", "LayerNorm"]
 
 
 class BertModel(BertPretrainedModel):

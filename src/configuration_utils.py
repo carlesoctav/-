@@ -1,3 +1,4 @@
+from abc import abstractmethod
 from jax.sharding import Mesh, PartitionSpec as P
 import jax.numpy as jnp
 from jax.experimental.mesh_utils import create_device_mesh
@@ -34,7 +35,7 @@ class NNXPretrainedConfig(transformers.PretrainedConfig):
     def __init__(
         self,
         axis_dims: tp.Sequence[int] = (-1, 1, 1, 1),
-        axis_names: tp.Sequence[str] = ("dp", "fsdp", "pp", "tp"),
+        axis_names: tp.Sequence[str] = ("dp", "fsdp", "sp", "tp"),
         partition_axis = PartitionAxis(),
         **kwargs,
     ):
@@ -44,7 +45,7 @@ class NNXPretrainedConfig(transformers.PretrainedConfig):
         super().__init__(**kwargs)
     
     @staticmethod
-    #TODO
+    #TODO move as utils
     def create_mesh(
 		axis_dims: tp.Sequence[int] = (1, -1, 1, 1),
 		axis_names: tp.Sequence[str] = ("dp", "fsdp", "pp", "tp"),
@@ -62,23 +63,15 @@ class NNXPretrainedConfig(transformers.PretrainedConfig):
     @property
     def mesh(self):
         return self.create_mesh(
-        axis_dims=(
-            [v for k, v in self.axis_dims.items()]
-            if isinstance(self.axis_dims, dict)
-            else self.axis_dims
-        ),
-        axis_names=(
-            [v for k, v in self.axis_names.items()]
-            if isinstance(self.axis_names, dict)
-            else self.axis_names
-        ),
-        backend=(
-            (self.backend if self.backend is not None else "")
-            if hasattr(self, "backend")
-            else ""
-        ),
+            axis_dims= self.axis_dims,
+            axis_names=self.axis_names,
+            backend=(
+                (self.backend if self.backend is not None else "")
+                if hasattr(self, "backend")
+                else ""
+            ),
         )
 
-
-    def partition_rules():
-        pass
+    @abstractmethod
+    def get_partition_rules():
+        raise NotImplementedError

@@ -1,13 +1,13 @@
 import typing as tp
 import jax.numpy as jnp
 from jax import lax
-from transformers import PretrainedConfig, PreTrainedModel
+from transformers import PreTrainedModel
 import gc
 from abc import abstractmethod
 from flax import nnx
 from flax.nnx import traversals
 from src.configuration_utils import NNXPretrainedConfig
-from src.utils.convert_params import convert_dict_state_to_flax_params
+from src.utils.paramaters_transformations import convert_torch_state_to_flax_state
 
 
 if tp.TYPE_CHECKING:
@@ -17,8 +17,6 @@ if tp.TYPE_CHECKING:
 class HuggingFaceCompatible:
     hf_config_class: tp.Type[NNXPretrainedConfig]
     hf_model_class: tp.Type[PreTrainedModel]
-    embedding_layer_names: tp.List[str]
-    layernorm_names: tp.List[str]
 
     @classmethod
     @abstractmethod
@@ -29,12 +27,12 @@ class HuggingFaceCompatible:
     def from_huggingface(
         cls,
         pretrained_model_name_or_path: str,
-        dtype: jnp.dtype = jnp.float32,  
+        dtype: jnp.dtype = jnp.float32,
         param_dtype: jnp.dtype = jnp.float32,
         precision: tp.Optional[lax.Precision] = None,
         *model_args,
         rngs: nnx.Rngs,
-        do_partition: bool = False,
+        do_shard: bool = False,
         **kwargs,
     ):
         try:
@@ -64,13 +62,19 @@ class HuggingFaceCompatible:
 
         state_dict = hf_model.state_dict()
         del hf_model
-        flatten_params = convert_dict_state_to_flax_params(
-            state_dict, cls.embedding_layer_names, cls.layernorm_names
+
+        model = cls.lazy_init(
+            config=hf_config, dtype=dtype, param_dtype=param_dtype, rngs=rngs
         )
-        model = cls.lazy_init(config=hf_config, dtype=dtype, param_dtype=param_dtype, rngs=rngs)
-        model, params, others = nnx.split(model, nnx.Param, ...)
-        unflatten_params = traversals.unflatten_mapping(flatten_params) 
-        print(f"DEBUGPRINT[8]: mixins.py:72: unflatten_params={unflatten_params}")
+
+        flatten_params = convert_torch_state_to_flax_state(state_dict, model)
+        unflatten_params = traversals.unflatten_mapping(flatten_params)
+
+        params = nnx.state(model, nnx.Param)
         params.replace_by_pure_dict(unflatten_params)
+        nnx.update(model, params)
+
+        if do_shard:
+            model.shard_model()
 
         return model
