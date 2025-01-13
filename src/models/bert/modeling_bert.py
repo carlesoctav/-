@@ -220,8 +220,8 @@ class BertAttention(nnx.Module):
         hidden_states: jax.Array,
         attention_mask: jax.Array | None = None,
     ) -> jax.Array:
-        attention_output = self.self(hidden_states, attention_mask)
-        layer_output = self.output(attention_output, hidden_states)
+        self_outputs = self.self(hidden_states, attention_mask)
+        layer_output = self.output(self_outputs, hidden_states)
         return layer_output
 
 
@@ -395,6 +395,12 @@ class BertModel(BertPretrainedModel):
         )
         self.encoder = BertEncoder(config, dtype, param_dtype, precision, rngs=rngs)
         self.pooler = BertPooler(config, dtype, param_dtype, precision, rngs=rngs)
+
+    @classmethod
+    def lazy_init(
+        cls, *args, **kwargs
+    )-> "BertModel": 
+        return nnx.eval_shape(lambda: cls(*args, **kwargs))
 
     def __call__(
         self,

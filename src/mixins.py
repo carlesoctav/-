@@ -7,7 +7,7 @@ from abc import abstractmethod
 from flax import nnx
 from flax.nnx import traversals
 from src.configuration_utils import NNXPretrainedConfig
-from src.utils.paramaters_transformations import convert_torch_state_to_flax_state
+from src.utils.paramaters_transformations import convert_torch_state_to_flax_state, recreate_rngs_state_for_lazy_model
 
 
 if tp.TYPE_CHECKING:
@@ -70,9 +70,11 @@ class HuggingFaceCompatible:
         flatten_params = convert_torch_state_to_flax_state(state_dict, model)
         unflatten_params = traversals.unflatten_mapping(flatten_params)
 
-        params = nnx.state(model, nnx.Param)
+        graphdef, params, others = nnx.split(model, nnx.Param, ...) 
         params.replace_by_pure_dict(unflatten_params)
-        nnx.update(model, params)
+        #TODO: need to check how to handle this if we have multiple starting seed from the nnx.rngs
+        others = recreate_rngs_state_for_lazy_model(others)
+        model = nnx.merge(graphdef, params, others)
 
         if do_shard:
             model.shard_model()

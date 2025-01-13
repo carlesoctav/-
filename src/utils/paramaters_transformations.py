@@ -6,7 +6,7 @@ from tqdm.auto import tqdm
 
 from flax import nnx
 
-from flax.typing import PathParts
+from flax.typing import PathParts 
 
 
 K = tp.TypeVar("K", nnx.Module, nnx.Variable)
@@ -84,7 +84,6 @@ def convert_torch_state_to_flax_state(
 
     state, others = nnx.state(lazy_model, nnx.Param, ...)
 
-    print(f"DEBUGPRINT[5]: paramaters_transformations.py:85: others={others}")
     jax.tree_util.tree_map_with_path(lambda x, y: print(x, y), others)
 
     config = {
@@ -102,8 +101,32 @@ def convert_torch_state_to_flax_state(
     return flatten_params
 
 
-def recreate_rngs_state_for_lazy_model(others):
+class RNGGenerator:
+	"""Helper class for recreating meta values with state tracking"""
 
-    def f(x):
-        pass
-    return jax.tree_util.tree_map(lambda x: x, others, is_leaf = lambda x: isinstance(x, nnx.VariableState)) 
+	def __init__(self, seed: int = 42):
+		self._count = 0
+		self._rng = jax.random.PRNGKey(seed)
+
+	def get_count(self) -> jnp.ndarray:
+		count = self._count
+		self._count += 1
+		return jnp.array(count, dtype=jnp.uint32)
+
+	def get_rng(self) -> jax.Array:
+		key, self._rng = jax.random.split(self._rng)
+		return key
+
+
+
+def recreate_rngs_state_for_lazy_model(others, seed: int = 42):
+    rng_generator = RNGGenerator(seed)
+    def f(x: nnx.VariableState):
+        if isinstance(x.type, (nnx.RngCount, type)) and issubclass( x.type, nnx.RngCount):
+            return x.replace(rng_generator.get_count())
+        elif isinstance(x.type, (nnx.RngKey, type)) and issubclass (x.type, nnx.RngKey):
+            return x.replace(rng_generator.get_rng())
+        else:
+            raise TypeError(f"Unexpected type {x.type}")
+
+    return jax.tree_util.tree_map(f, others, is_leaf = lambda x: isinstance(x, nnx.VariableState)) 

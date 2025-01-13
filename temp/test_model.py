@@ -9,7 +9,7 @@ import transformers
 
 
 
-model = BertModel(BertConfig(axis_dims = (1,4,1,1) , num_hidden_layers=1), rngs = nnx.Rngs(0))
+model = BertModel(BertConfig(axis_dims = (1,4,1,1) , num_hidden_layers=1), rngs = nnx.Rngs(0, dropout = 100, params = 10))
 
 state, others = nnx.state(model, nnx.Param, ...)
 print(f"DEBUGPRINT[3]: test_model.py:16: others={others}")
