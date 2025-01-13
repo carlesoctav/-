@@ -66,10 +66,12 @@ def tree_path_to_string(path: tp.Tuple, sep: tp.Optional[str] = None) -> str | t
 
 
 def params_sharder(model: nnx.Module, partition_spec, mesh):
-    """
-    I think this needs to run inside JIT
-    """
     params, _ = nnx.state(model, nnx.Param, ...)
     sharded_state = nnx.with_sharding_constraint(params, partition_spec, mesh)
     nnx.update(model, sharded_state)
     return model
+
+
+def is_sharded(model: nnx.Module) -> bool:
+    # another todo
+    return False
