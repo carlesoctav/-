@@ -19,8 +19,7 @@ def match_partition_spec(
         else:
             return None
 
-    def get_partition_spec(name, leaf: nnx.VariableState):
-        print(f"DEBUGPRINT[2]: sharding.py:22: name={name}")
+    def get_partition_spec(name, leaf):
         if isinstance(leaf, nnx.VariableState):
             for rule, ps in rules:
                 if re.search(rule, name) is not None:
@@ -66,7 +65,7 @@ def tree_path_to_string(path: tp.Tuple, sep: tp.Optional[str] = None) -> str | t
 
 
 def params_sharder(model: nnx.Module, partition_spec, mesh):
-    params, _ = nnx.state(model, nnx.Param, ...)
+    params = nnx.state(model)
     sharded_state = nnx.with_sharding_constraint(params, partition_spec, mesh)
     nnx.update(model, sharded_state)
     return model
@@ -75,3 +74,4 @@ def params_sharder(model: nnx.Module, partition_spec, mesh):
 def is_sharded(model: nnx.Module) -> bool:
     # another todo
     return False
+

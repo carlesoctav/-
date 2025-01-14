@@ -62,7 +62,7 @@ class NNXPretrainedModel(nnx.Module):
     @property
     def params_shape(self):
         """Evaluates the shape of the model's parameters and returns a dictionary."""
-        shape_tree = nnx.eval_shape(lambda: nnx.state(self, nnx.Param))
+        shape_tree = nnx.eval_shape(lambda: nnx.state(self))
         return shape_tree
 
     def get_current_model_partition_spec(self):
