@@ -1,5 +1,5 @@
 
-from src.configuration_utils import NNXPretrainedConfig
+from src.configuration_utils import NNXPretrainedConfig, ParallelConfig
 from jax.sharding import PartitionSpec, NamedSharding
 
 
@@ -8,6 +8,7 @@ class BertConfig(NNXPretrainedConfig):
 
     def __init__(
         self,
+        parallel_config: ParallelConfig = ParallelConfig(),
         vocab_size=30522,
         hidden_size=768,
         num_hidden_layers=12,
@@ -26,7 +27,7 @@ class BertConfig(NNXPretrainedConfig):
         classifier_dropout=None,
         **kwargs,
     ):
-        super().__init__(pad_token_id=pad_token_id, **kwargs)
+        super().__init__(pad_token_id=pad_token_id, **kwargs, parallel_config=parallel_config)
 
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size

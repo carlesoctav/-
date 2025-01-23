@@ -11,7 +11,7 @@ A = tp.TypeVar('A')
 
 def match_partition_spec(
     tree: A,
-    rules: tp.Tuple[str, PartitionSpec] 
+    rules: tp.Tuple[tp.Tuple[str, PartitionSpec], ...],
 )-> A: 
     def _maybe_replicate(x):
         if hasattr(x, 'shape'):
@@ -64,9 +64,9 @@ def tree_path_to_string(path: tp.Tuple, sep: tp.Optional[str] = None) -> str | t
 
 
 
-def params_sharder(model: nnx.Module, partition_spec, mesh):
+def params_sharder(model: nnx.Module, partition_spec_tree, mesh):
     params = nnx.state(model)
-    sharded_state = nnx.with_sharding_constraint(params, partition_spec, mesh)
+    sharded_state = nnx.with_sharding_constraint(params, partition_spec_tree, mesh)
     nnx.update(model, sharded_state)
     return model
 

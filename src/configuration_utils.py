@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from typing import NamedTuple, Optional, Tuple, Union
 
-from distributed.mesh_utils import initialize_mesh
+from src.distributed.mesh_utils import initialize_mesh
 
 
 AxisType = Tuple[int, Union[Tuple[str, ...], str]]
@@ -41,5 +41,5 @@ class NNXPretrainedConfig(transformers.PretrainedConfig):
         return initialize_mesh(self.parallel_config)
 
     @abstractmethod
-    def get_partition_rules():
+    def get_partition_rules(self, fully_sharded_data_parallel: bool = True):
         raise NotImplementedError

@@ -4,18 +4,15 @@ import os
 import jax
 import numpy as np
 from jax.sharding import Mesh
+import typing as tp
 
-from src.configuration_utils import ParallelConfig
+if tp.TYPE_CHECKING:
+    from src.configuration_utils import ParallelConfig
 
 
 def initialize_mesh(
-    parallel_config: ParallelConfig, device_array: np.ndarray | None = None, init_distributed_on_slurm: bool = True
+    parallel_config: "ParallelConfig", device_array: np.ndarray | None = None
 ) -> Mesh:
-    if init_distributed_on_slurm and "SLURM_STEP_NODELIST" in os.environ:
-        # Initializes one process per device, using the SLURM environment variables.
-        # TODO: We may need to do this already before data loading, so very early in the run script.
-        # To be checked once the framework is more mature.
-        jax.distributed.initialize()
 
     data_axis_size, data_axis_name = parallel_config.partition_tuple.data_axis
     fsdp_axis_size, fsdp_axis_name = parallel_config.partition_tuple.fsdp_axis

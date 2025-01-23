@@ -98,14 +98,6 @@ class NNXPretrainedModel(nnx.Module):
             return self.config.mesh
         return mesh
 
-    @property
-    def model_task(self):
-        return self.config.model_task
-
-    @property
-    def model_type(self):
-        return self._model_type
-
     def shard_model(
         self,
         partition_rules: tp.Optional[tp.Tuple[str, PartitionSpec]] = None,
@@ -114,7 +106,7 @@ class NNXPretrainedModel(nnx.Module):
         mesh = self.get_mesh(mesh)
         partition_spec = self.get_partition_spec(partition_rules)
         sharder = nnx.jit(
-            functools.partial(params_sharder, partition_spec=partition_spec, mesh=mesh)
+            functools.partial(params_sharder, partition_spec_tree=partition_spec, mesh=mesh)
         )
 
         self = sharder(self)
